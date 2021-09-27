@@ -7,7 +7,7 @@ const EPSILON: f64 = 1e-8;
 // Cutoff is multiplier of baseline to stop at - e.g. 10%
 // Might also want a min num steps
 // Output is normalized to state 0, namely log n
-fn coupled_entropy(transition: &[Vec<(usize, f64)>], cutoff: f64) -> Vec<(f64, Vec<Vec<f64>>)> {
+fn coupled_entropy(transition: &[Vec<(usize, f64)>], cutoff: f64) -> Vec<(f64, Vec<f64>)> {
     let size = transition.len();
     for row in transition {
         row.iter().for_each(|&(i, f)| {
@@ -32,12 +32,16 @@ fn coupled_entropy(transition: &[Vec<(usize, f64)>], cutoff: f64) -> Vec<(f64, V
             .map(|&f| if f > 0.0 { -f * f.ln() } else { 0.0 })
             .sum();
         let norm_entropy = entropy / (size as f64).ln();
-        entropies.push((norm_entropy, dist));
-        if entropies.len() > size && norm_entropy - 1.0 < cutoff {
+        let rows: Vec<f64> = dist.iter().map(|row| row.iter().sum()).collect();
+        entropies.push((norm_entropy, rows));
+        if entropies.len() > size.min(100) && norm_entropy - 1.0 < cutoff {
             return entropies;
         }
+        if entropies.len().is_power_of_two() {
+            println!("{} {}", entropies.len(), norm_entropy);
+        }
         let mut new_dist = vec![vec![0.0; size]; size];
-        for (r, row) in entropies[entropies.len() - 1].1.iter().enumerate() {
+        for (r, row) in dist.iter().enumerate() {
             for (c, dist_p) in row.iter().enumerate() {
                 if r == c {
                     for &(i, trans_p) in &transition[r] {
@@ -78,14 +82,12 @@ fn cycles() {
         let result = coupled_entropy(&transition, 0.1);
         if verbose {
             println!("Cycle {};entropy;dist", k);
-            for (i, (entropy, dist)) in result.iter().enumerate() {
+            for (i, (entropy, rows)) in result.iter().enumerate() {
                 println!(
                     "{}; {:.5}; {:.5?}",
                     i,
                     entropy,
-                    dist.iter()
-                        .map(|row| row.iter().sum::<f64>())
-                        .collect::<Vec<f64>>()
+                    rows
                 );
             }
         } else {
@@ -129,27 +131,32 @@ fn linear_diffuse(n: usize, k: usize) -> (Vec<Vec<(usize, f64)>>, Vec<usize>) {
     (transition, states)
 }
 fn diffusion() {
-    let (transition, states) = linear_diffuse(8, 4);
+    let n = 12;
+    let k = n / 2;
+    let (transition, states) = linear_diffuse(n, k);
     let mut rng = StdRng::seed_from_u64(0);
     let result = coupled_entropy(&transition, 0.1);
-    let (best_i, _) = result.iter().enumerate().max_by_key(|(_, (f, _))| n64(*f)).unwrap();
-    let mut indexes: Vec<usize> = (0..10).map(|i| (result.len()/10) * i).collect();
+    let (best_i, _) = result
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, (f, _))| n64(*f))
+        .unwrap();
+    let mut indexes: Vec<usize> = (0..10).map(|i| (result.len() / 10) * i).collect();
     indexes.push(best_i);
     indexes.sort();
     for i in indexes {
-        let (entropy, dist) = &result[i];
-        let rows: Vec<f64> = dist.iter().map(|row| row.iter().sum()).collect();
-        let mut samples = sample(&rows, 10, &states, &mut rng);
-        samples.sort();
+        let (entropy, rows) = &result[i];
+        let samples = sample(&rows, 10, &states, &mut rng);
         println!(
-            "{:>3}; {:.5}; {}",
+            "{:>width$}; {:.5}; {}",
             i,
             entropy,
             samples
                 .iter()
-                .map(|i| format!("{:08b}", i))
+                .map(|i| format!("{:0width$b}", i, width = n))
                 .collect::<Vec<String>>()
-                .join(", ")
+                .join(", "),
+            width = format!("{}", result.len()).len()
         );
     }
 }

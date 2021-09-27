@@ -133,10 +133,11 @@ fn diffusion() {
     let mut rng = StdRng::seed_from_u64(0);
     let result = coupled_entropy(&transition, 0.1);
     let (best_i, _) = result.iter().enumerate().max_by_key(|(_, (f, _))| n64(*f)).unwrap();
-    for base in (0..11) {
-        let i = if base == 5 {
-            
-        }
+    let mut indexes: Vec<usize> = (0..10).map(|i| (result.len()/10) * i).collect();
+    indexes.push(best_i);
+    indexes.sort();
+    for i in indexes {
+        let (entropy, dist) = &result[i];
         let rows: Vec<f64> = dist.iter().map(|row| row.iter().sum()).collect();
         let mut samples = sample(&rows, 10, &states, &mut rng);
         samples.sort();
